@@ -512,6 +512,4 @@ MIT License
 
 ---
 
-## 👨‍💻 Author
 
-ASMI Dashboard Team

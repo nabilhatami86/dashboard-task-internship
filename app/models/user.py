@@ -6,7 +6,7 @@ import enum
 
 class UserRole(enum.Enum):
     admin = "admin"
-    karyawan = "karyawan"
+    agent = "agent"
 
 
 class User(Base):

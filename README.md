@@ -1,403 +1,209 @@
-# 🧩 Dashboard Backend API
+# 🧩 Dashboard Backend API — Dokumentasi Lengkap
 
-Backend API untuk **Dashboard** dengan fitur **Authentication**, **WhatsApp Bot Integration**, dan **User Management** menggunakan **FastAPI**, **PostgreSQL**, dan **SQLAlchemy**.
+Backend API ini menyediakan fitur: Authentication, WhatsApp Bot Integration, dan User Management menggunakan `FastAPI`, `PostgreSQL`, dan `SQLAlchemy`.
 
----
-
-## 🚀 Tech Stack
-
-- **Python 3.10+**
-- **FastAPI** - Web framework
-- **PostgreSQL** - Database
-- **SQLAlchemy** - ORM
-- **Alembic** - Database migration
-- **JWT** - Authentication
-- **Passlib + Bcrypt** - Password hashing
-- **WhatsApp API (Whapi.cloud)** - Bot integration
-- **Uvicorn** - ASGI server
+Dokumentasi ini menjelaskan cara instalasi, konfigurasi, testing webhook, perintah admin, integrasi AI (opsional), dan tips deployment.
 
 ---
 
-## 📁 Project Structure
+## Prasyarat
 
-```bash
-backend-dashboard/
-│
-├── app/
-│   ├── main.py                    # Application entry point
-│   │
-│   ├── config/
-│   │   ├── config.py              # App configuration
-│   │   ├── database.py            # Database connection
-│   │   ├── deps.py                # Dependencies (get_db)
-│   │   └── confiq_whapi.py        # WhatsApp API config
-│   │
-│   ├── models/
-│   │   └── user.py                # User model
-│   │
-│   ├── schemas/
-│   │   └── auth_schema.py         # Auth validation schemas
-│   │
-│   ├── routes/
-│   │   └── auth.py                # Auth endpoints
-│   │
-│   ├── controller/
-│   │   └── auth_controller.py     # Auth business logic
-│   │
-│   ├── services/
-│   │   └── bot_service.py         # WhatsApp bot logic
-│   │
-│   ├── whapi/
-│   │   ├── client.py              # WhatsApp API client
-│   │   └── webhook.py             # WhatsApp webhook handler
-│   │
-│   └── utils/
-│       ├── security.py            # Password hashing
-│       └── jwt.py                 # JWT token handler
-│
-├── .env                           # Environment variables
-├── requirements.txt               # Python dependencies
-├── docker-compose.yml             # Docker configuration
-└── README.md
-```
+- Python 3.10+
+- PostgreSQL (lokal atau via Docker)
+- Virtual environment (disarankan)
+- Jika ingin AI: akses OpenAI API key (opsional)
 
 ---
 
-## ⚙️ Environment Variables
+## Struktur Proyek (ringkasan)
 
-Buat file `.env` di root project:
+Folder utama:
 
-```env
-# Database
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=asmi_db
-DB_USER=postgres
-DB_PASSWORD=your_password
+- `app/` — kode aplikasi (entry `app/main.py`)
+- `app/config/` — konfigurasi dan variabel environment
+- `app/whapi/` — client & webhook integrasi WhatsApp
+- `app/services/` — service seperti `bot_service.py` (AI + admin handling)
+- `alembic/` — migrasi database
 
-# JWT
-SECRET_KEY=your-super-secret-key-here
+Lihat `app/README.md` untuk detail tiap folder.
+
+---
+
+## Environment Variables (detail)
+
+Letakkan file `.env` di root atau export environment variables.
+
+Paling penting:
+
+- `DATABASE_URL` atau `DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD` — koneksi DB
+- `SECRET_KEY` — JWT secret
+- `ALGORITHM` — JWT algorithm (mis. `HS256`)
+- `ACCESS_TOKEN_EXPIRE_MINUTES` — durasi token
+- `WHAPI_BASE_URL` — base URL provider WHAPI (mis. `https://gate.whapi.cloud`)
+- `WHAPI_TOKEN` — token untuk mengirim pesan WHAPI
+- `WHAPI_ADMINS` — (opsional) daftar nomor admin, contoh: `62811xxxx,62812xxxx`
+- `OPENAI_API_KEY` — (opsional) kunci OpenAI jika mau pakai AI reply
+
+Contoh `.env`:
+
+```ini
+DATABASE_URL=postgresql://user:pass@localhost:5432/asmi_db
+SECRET_KEY=your-super-secret
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=60000
-
-# WhatsApp API
 WHAPI_BASE_URL=https://gate.whapi.cloud
-WHAPI_TOKEN=your-whapi-token-here
+WHAPI_TOKEN=your-whapi-token
+WHAPI_ADMINS=62811xxxx,62812xxxx
+OPENAI_API_KEY=sk-xxx
 ```
 
 ---
 
-## 📦 Installation
+## Instalasi & Menjalankan (singkat)
 
-### 1. Clone Repository
-
-```bash
-git clone <repository-url>
-cd backend-dashboard
-```
-
-### 2. Setup Virtual Environment
+1. Clone repo dan aktifkan virtualenv:
 
 ```bash
-# Windows
-python -m venv .venv
-.venv\Scripts\activate
-
-# Linux/Mac
+git clone <repo-url>
+cd backend-dashboard-python
 python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-### 3. Install Dependencies
+2. Install dependency:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Setup Database
+3. Jalankan database (Docker recommended) atau pastikan `DATABASE_URL` valid.
 
-```bash
-# Menggunakan Docker (Recommended)
-docker-compose up -d
-
-# Atau install PostgreSQL manual dan buat database
-createdb asmi_db
-```
-
-### 5. Run Migrations
+4. Jalankan migrasi:
 
 ```bash
 alembic upgrade head
 ```
 
----
-
-## ▶️ Run Application
+5. Jalankan server:
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-Server akan berjalan di:
+Endpoints:
 
-- **API**: `http://127.0.0.1:8000`
-- **Swagger Docs**: `http://127.0.0.1:8000/docs`
-- **ReDoc**: `http://127.0.0.1:8000/redoc`
-
----
-
-## 📡 API Endpoints
-
-### ✅ Health Check
-
-#### `GET /`
-
-Cek status aplikasi
-
-**Response:**
-
-```json
-{
-  "status": "ok"
-}
-```
-
-#### `GET /db-connect`
-
-Cek koneksi database
-
-**Response:**
-
-```json
-{
-  "database": "postgresql",
-  "status": "connected"
-}
-```
+- `http://127.0.0.1:8000` — API root
+- `http://127.0.0.1:8000/docs` — Swagger UI
 
 ---
 
-### 🔐 Authentication
+## Testing Webhook (lokal)
 
-#### `POST /auth/register`
+Anda bisa mensimulasikan incoming message dari provider dengan `curl`:
 
-Register user baru
-
-**Request Body:**
-
-```json
-{
-  "name": "Admin User",
-  "email": "admin@example.com",
-  "username": "admin",
-  "password": "password123",
-  "role": "admin"
-}
+```bash
+curl -X POST http://127.0.0.1:8000/webhook/whapi \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"from":"62811xxxx","text":{"body":"Halo saya butuh bantuan"}}]}'
 ```
 
-**Available Roles:**
-
-- `admin` - Administrator
-- `karyawan` - Karyawan/Staff
-
-**Response:**
+Respon yang diharapkan:
 
 ```json
-{
-  "message": "Register success",
-  "data": {
-    "id": 1,
-    "name": "Admin User",
-    "username": "admin",
-    "email": "admin@example.com",
-    "role": "admin",
-    "created_at": "2025-01-01T10:00:00"
-  }
-}
+{ "status": "ok" }
 ```
 
-**Validasi:**
+Catatan teknis:
 
-- Password minimal 6 karakter
-- Password maksimal 72 karakter
-- Email harus valid
-- Username dan email harus unik
+- Route webhook menggunakan `BackgroundTasks` sehingga pemanggilan `send_text` (synchronous) tidak memblokir event loop.
+- Jika `send_text` gagal karena konfigurasi `WHAPI_BASE_URL`/`WHAPI_TOKEN` salah, periksa `.env` dan log aplikasi.
 
 ---
 
-#### `POST /auth/login`
+## Menguji pengiriman pesan manual
 
-Login dengan username atau email
-
-**Request Body:**
-
-```json
-{
-  "identifier": "admin",
-  "password": "password123"
-}
-```
-
-> **Note:** `identifier` bisa berupa **username** atau **email**
-
-**Response:**
-
-```json
-{
-  "message": "Login success",
-  "data": {
-    "id": 1,
-    "name": "Admin User",
-    "username": "admin",
-    "email": "admin@example.com",
-    "role": "admin"
-  },
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "bearer"
-}
-```
-
----
-
-### 🔑 Authorization (JWT)
-
-Untuk endpoint yang memerlukan autentikasi, tambahkan header:
-
-```
-Authorization: Bearer <access_token>
-```
-
-**JWT Payload:**
-
-```json
-{
-  "sub": "1",
-  "role": "admin",
-  "exp": 1735689600
-}
-```
-
----
-
-### 💬 WhatsApp Bot Webhook
-
-#### `POST /webhook/whapi`
-
-Webhook untuk menerima pesan WhatsApp dari Whapi.cloud
-
-**Request Body (dari Whapi.cloud):**
-
-```json
-{
-  "messages": [
-    {
-      "from": "62812345678@s.whatsapp.net",
-      "text": {
-        "body": "Halo"
-      }
-    }
-  ]
-}
-```
-
-**Bot Commands:**
-
-- `admin` - Alihkan ke admin (mode manual)
-- `pause` - Pause bot sementara
-- `bot` - Aktifkan bot kembali
-- Pesan lain - Tampilkan menu bot otomatis
-
-**Bot Response Example:**
-
-```
-Halo 👋
-Silakan pilih:
-1️⃣ Info
-2️⃣ Bantuan
-
-Ketik *agent* untuk berbicara dengan manusia.
-```
-
-**Response:**
-
-```json
-{
-  "status": "ok"
-}
-```
-
----
-
-## 🤖 Bot Service Logic
-
-Bot memiliki **3 state** untuk setiap user:
-
-| State   | Deskripsi                     |
-| ------- | ----------------------------- |
-| `BOT`   | Bot aktif, balas otomatis     |
-| `AGENT` | Mode manual, admin yang balas |
-| `PAUSE` | Bot di-pause sementara        |
-
-**File:** `app/services/bot_service.py`
-
-```python
-user_state = {}
-
-def handle_bot(user: str, message: str):
-    # Logic untuk handle pesan dari user
-    # Return None jika tidak perlu balas (mode AGENT/PAUSE)
-    # Return text untuk auto-reply
-```
-
----
-
-## 📱 WhatsApp API Integration
-
-### Setup WhatsApp API
-
-1. Daftar di [Whapi.cloud](https://whapi.cloud)
-2. Dapatkan API token
-3. Set webhook URL ke `https://your-domain.com/webhook/whapi`
-4. Tambahkan `WHAPI_TOKEN` ke file `.env`
-
-### Send Message Programmatically
-
-**File:** `app/whapi/client.py`
+Contoh file `test_send.py` (bisa dibuat di root project):
 
 ```python
 from app.whapi.client import send_text
 
-# Kirim pesan WhatsApp
-send_text("62812345678@s.whatsapp.net", "Halo dari bot!")
+if __name__ == '__main__':
+    print(send_text('62811xxxx', 'Pesan test dari local'))
+```
+
+Jalankan:
+
+```bash
+python test_send.py
+```
+
+Jika `WHAPI_BASE_URL` dan `WHAPI_TOKEN` valid, Anda akan mendapatkan respon dict dari API provider.
+
+---
+
+## Admin & Human Handoff (fitur chat)
+
+Konsep:
+
+- `WHAPI_ADMINS` berisi nomor yang dianggap admin/operator.
+- Admin dapat mengirim perintah lewat WhatsApp chat mereka sendiri (atau endpoint internal) untuk mengatur flow:
+  - `assign <user>` — set target user ke mode `AGENT` (human)
+  - `unassign <user>` — kembalikan target ke mode `BOT`
+  - `reply <user> <message>` — admin mengirim balasan yang akan diteruskan ke `user`
+
+Implementasi saat ini (`app/services/bot_service.py`):
+
+- Menyimpan state sederhana di memori (`user_state`, `last_human_reply`). Untuk produksi, gunakan Redis/DB.
+- Jika user di-mode `AGENT` atau `PAUSE`, bot otomatis tidak membalas.
+- Jika admin mengirim `reply`, service mengembalikan token khusus yang perlu dideteksi oleh caller untuk meneruskan pesan ke target — saya bisa patch `app/whapi/webhook.py` agar mendeteksi token ini dan mengirim pesan secara otomatis.
+
+Contoh panggilan admin (simulasi via webhook):
+
+```bash
+curl -X POST http://127.0.0.1:8000/webhook/whapi \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"from":"62811xxxx","text":{"body":"reply 62812xxxx Saya akan bantu sekarang"}}]}'
 ```
 
 ---
 
-## 🗄️ Database Models
+## AI Fallback (opsional)
 
-### User Model
+Jika `OPENAI_API_KEY` diset, `app/services/bot_service.py` akan mencoba memanggil OpenAI ChatCompletion (default `gpt-3.5-turbo`) untuk menghasilkan balasan otomatis. Jika tidak tersedia, fungsi akan mengembalikan canned reply.
 
-**File:** `app/models/user.py`
+Catatan keamanan & biaya:
 
-```python
-class User(Base):
-    __tablename__ = "users"
-
-    id: int                    # Primary key
-    name: str                  # Full name
-    email: str                 # Email (unique)
-    username: str              # Username (unique)
-    password: str              # Hashed password
-    role: UserRole             # admin | agent
-    created_at: datetime       # Timestamp
-```
+- Gunakan rate limiting dan cost monitoring saat memanggil OpenAI.
+- Sanitasi prompt bila perlu (jangan kirim data sensitif tanpa kontrol).
 
 ---
 
-## 🔒 Security Features
+## Rekomendasi Produksi
 
-- ✅ Password di-hash dengan **bcrypt**
-- ✅ JWT token dengan expiry time
+- Ubah `app/whapi/client.py` menjadi async menggunakan `httpx.AsyncClient` agar lebih efisien di bawah beban.
+- Simpan `user_state` dan metadata di Redis atau DB (agar bersifat persist dan multi-instance).
+- Tambahkan verifikasi signature HMAC untuk webhook jika provider mendukung, simpan `WHAPI_SECRET` di konfigurasi.
+- Tambahkan monitoring/logging terpusat (Sentry/ELK) dan retry/backoff pada `send_text`.
+- Proteksi endpoint admin (verifikasi nomor/otentikasi tambahan).
+
+---
+
+## Troubleshooting
+
+- Jika webhook tidak menerima event: periksa URL webhook di provider dan pastikan server dapat diakses (ngrok untuk lokal).
+- Jika `send_text` gagal: periksa `WHAPI_TOKEN`, `WHAPI_BASE_URL`, dan cek logs untuk error dari provider.
+
+---
+
+## Help / Next Steps saya bisa bantu
+
+- Saya dapat:
+  - Buatkan `test_send.py` otomatis dan endpoint admin helper.
+  - Patch `app/whapi/webhook.py` untuk otomatis meng-handle `__ADMIN_REPLY__` token dari `bot_service`.
+  - Konversi `client.py` ke `httpx.AsyncClient`.
+
+Katakan mana yang mau saya kerjakan selanjutnya.
+
 - ✅ Role-based access control (admin/karyawan)
 - ✅ Email validation
 - ✅ Password strength validation (min 6, max 72 karakter)
@@ -511,5 +317,3 @@ pip install -r requirements.txt --force-reinstall
 MIT License
 
 ---
-
-

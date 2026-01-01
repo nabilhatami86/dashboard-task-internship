@@ -1,12 +1,17 @@
 from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.whapi.webhook import router as whapi_router
 
 from app.config.database import engine, Base
 from app.config.deps import get_db
-from app.routes import auth
+from app.routes import auth, chat
 
+# Import models to ensure they're registered with Base
+from app.models.user import User
+from app.models.chat import Chat
+from app.models.message import Message
 
 # create tables
 Base.metadata.create_all(bind=engine)
@@ -15,6 +20,15 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title="Dashboard API",
     version="0.1.0"
+)
+
+# CORS Configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -30,6 +44,7 @@ def startup_db_check():
 
 # routes
 app.include_router(auth.router)
+app.include_router(chat.router)
 app.include_router(whapi_router)
 
 

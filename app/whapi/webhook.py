@@ -1,26 +1,143 @@
-from fastapi import APIRouter, Request, BackgroundTasks, HTTPException
+from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Depends
+from sqlalchemy.orm import Session
 import logging
 from app.whapi.client import send_text
 from app.services.bot_service import handle_bot
+from app.config.deps import get_db
+from app.models.chat import Chat, ChatMode, ChatChannel
+from app.models.message import Message, MessageSender, MessageStatus
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def get_or_create_chat(db: Session, phone: str, name: str = None) -> Chat:
+    """Get existing chat or create new one from WhatsApp message"""
+    # Try to find existing chat by phone
+    chat = db.query(Chat).filter(Chat.customer_phone == phone).first()
+
+    if chat:
+        # Update online status and last message time
+        chat.online = True
+        chat.last_message_at = datetime.now()
+
+        # Update name if provided and more descriptive than current name
+        if name:
+            # Update if current name is phone number, generic name, or test name
+            should_update = (
+                not chat.customer_name or
+                "@c.us" in chat.customer_name or
+                "@g.us" in chat.customer_name or
+                chat.customer_name.startswith("628") or
+                "Test" in chat.customer_name
+            )
+            if should_update and name != chat.customer_name:
+                old_name = chat.customer_name
+                chat.customer_name = name
+                logger.info(f"Updated chat {chat.id} name from '{old_name}' to '{name}'")
+
+        db.commit()
+        db.refresh(chat)
+        return chat
+
+    # Create new chat
+    # Extract name from phone if not provided
+    if not name:
+        name = phone.replace("@c.us", "").replace("@g.us", "")
+
+    new_chat = Chat(
+        customer_name=name,
+        customer_phone=phone,
+        customer_email=None,
+        customer_address=None,
+        channel=ChatChannel.whatsapp,
+        mode=ChatMode.bot,  # Start in bot mode
+        online=True,
+        unread_count=0,
+        last_message_at=datetime.now(),
+    )
+
+    db.add(new_chat)
+    db.commit()
+    db.refresh(new_chat)
+
+    logger.info(f"Created new chat for {phone} with name: {name}")
+    return new_chat
+
+
+def save_customer_message(db: Session, chat: Chat, text: str) -> Message:
+    """Save customer message to database"""
+    message = Message(
+        chat_id=chat.id,
+        text=text,
+        sender=MessageSender.customer,
+        status=MessageStatus.sent,
+        created_at=datetime.now(),
+    )
+
+    db.add(message)
+
+    # Increment unread count
+    chat.unread_count += 1
+    chat.last_message_at = datetime.now()
+
+    db.commit()
+    db.refresh(message)
+
+    logger.info(f"Saved customer message to chat {chat.id}")
+    return message
+
+
+def save_bot_reply(db: Session, chat: Chat, text: str) -> Message:
+    """Save bot reply to database"""
+    message = Message(
+        chat_id=chat.id,
+        text=text,
+        sender=MessageSender.agent,
+        status=MessageStatus.sent,
+        created_at=datetime.now(),
+        agent_id=None,  # Bot messages have no agent_id
+    )
+
+    db.add(message)
+    chat.last_message_at = datetime.now()
+    db.commit()
+    db.refresh(message)
+
+    logger.info(f"Saved bot reply to chat {chat.id}")
+    return message
+
+
 @router.post("/webhook/whapi")
-async def whapi_webhook(request: Request, background_tasks: BackgroundTasks):
+@router.post("/webhook/whapi/messages")  # WHAPI sends to /messages endpoint
+async def whapi_webhook(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
     try:
         data = await request.json()
-    except Exception:
+        logger.info(f"Received webhook data: {data}")
+    except Exception as e:
+        logger.error(f"Failed to parse webhook JSON: {e}")
         raise HTTPException(status_code=400, detail="invalid json")
 
     msgs = data.get("messages")
     if not msgs or not isinstance(msgs, list):
-        return {"status": "ignored"}
+        return {"status": "ignored", "reason": "no messages"}
 
     msg = msgs[0]
     sender = msg.get("from") or msg.get("sender")
 
+    # Get sender name if available
+    sender_name = None
+    if msg.get("from_name"):
+        sender_name = msg["from_name"]
+    elif msg.get("pushname"):
+        sender_name = msg["pushname"]
+
+    # Extract text
     text = None
     if isinstance(msg.get("text"), dict):
         text = msg["text"].get("body")
@@ -29,15 +146,54 @@ async def whapi_webhook(request: Request, background_tasks: BackgroundTasks):
 
     if not sender or not text:
         logger.info("webhook ignored: missing sender or text")
-        return {"status": "ignored"}
+        return {"status": "ignored", "reason": "missing sender or text"}
 
+    # Get or create chat in database
+    chat = get_or_create_chat(db, sender, sender_name)
+
+    # Save customer message to database
+    save_customer_message(db, chat, text)
+
+    # Check chat mode from database
+    if chat.mode == ChatMode.agent:
+        # In agent mode - don't send bot reply
+        logger.info(f"Chat {chat.id} is in agent mode, skipping bot reply")
+        return {"status": "ok", "mode": "agent", "chat_id": chat.id}
+
+    if chat.mode == ChatMode.paused:
+        # In paused mode - don't send bot reply
+        logger.info(f"Chat {chat.id} is paused, skipping bot reply")
+        return {"status": "ok", "mode": "paused", "chat_id": chat.id}
+
+    if chat.mode == ChatMode.closed:
+        # Closed chat - don't send bot reply
+        logger.info(f"Chat {chat.id} is closed, skipping bot reply")
+        return {"status": "ok", "mode": "closed", "chat_id": chat.id}
+
+    # Bot mode - generate and send reply
     try:
         reply = handle_bot(sender, text)
-    except Exception:
+    except Exception as e:
         logger.exception("bot handler failed")
-        return {"status": "error"}
+        return {"status": "error", "error": str(e)}
 
     if reply:
+        # Save bot reply to database
+        save_bot_reply(db, chat, reply)
+
+        # Send to WhatsApp in background
         background_tasks.add_task(send_text, sender, reply)
 
-    return {"status": "ok"}
+        return {
+            "status": "ok",
+            "mode": "bot",
+            "chat_id": chat.id,
+            "bot_replied": True
+        }
+
+    return {
+        "status": "ok",
+        "mode": "bot",
+        "chat_id": chat.id,
+        "bot_replied": False
+    }

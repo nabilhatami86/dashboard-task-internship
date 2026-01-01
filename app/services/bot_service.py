@@ -18,7 +18,7 @@ ADMINS = _load_admins()
 def _generate_ai_reply(user: str, message: str) -> str:
     """Generate a reply using an external AI provider if available.
 
-    Falls back to a canned response when no provider is configured.
+    Falls back to smart keyword-based responses for Warung Madura agent support.
     """
     try:
         import openai
@@ -28,22 +28,69 @@ def _generate_ai_reply(user: str, message: str) -> str:
             raise RuntimeError("OPENAI_API_KEY not set")
         openai.api_key = api_key
         prompt = (
-            "You are a helpful customer support assistant. Reply concisely and politely "
-            f"to the user message: \"{message}\""
+            "You are a support assistant for Warung Madura agents. "
+            "Agents may report issues about stock, payments, system errors, deliveries, or ask questions. "
+            "Reply concisely, supportively, and professionally in Bahasa Indonesia. "
+            f"Agent message: \"{message}\""
         )
         resp = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "system", "content": "Customer support assistant."},
+            messages=[{"role": "system", "content": "Warung Madura support assistant."},
                       {"role": "user", "content": prompt}],
             max_tokens=250,
             temperature=0.2,
         )
         return resp.choices[0].message.content.strip()
     except Exception:
-        # fallback canned reply
+        # Smart fallback based on keywords for Warung Madura scenarios
+        msg_lower = message.lower()
+
+        # Stock-related keywords
+        if any(keyword in msg_lower for keyword in ["stock", "stok", "habis", "kosong", "restock", "barang"]):
+            return (
+                "Baik, saya catat masalah stock Anda. Untuk restock biasanya 1-2 hari kerja. "
+                "Admin akan segera membantu koordinasi stock Anda."
+            )
+
+        # Payment-related keywords
+        if any(keyword in msg_lower for keyword in ["bayar", "pembayaran", "transfer", "uang", "belum masuk"]):
+            return (
+                "Terima kasih laporannya. Tim admin akan segera cek transaksi pembayaran Anda. "
+                "Mohon tunggu sebentar."
+            )
+
+        # System/Technical error keywords
+        if any(keyword in msg_lower for keyword in ["error", "sistem", "gak bisa", "tidak bisa", "rusak", "bermasalah"]):
+            return (
+                "Maaf atas kendalanya. Tim teknis akan segera memeriksa masalah sistem Anda. "
+                "Mohon tunggu max 15 menit."
+            )
+
+        # Delivery/shipping keywords
+        if any(keyword in msg_lower for keyword in ["kirim", "pengiriman", "telat", "terlambat", "belum sampai"]):
+            return (
+                "Mohon maaf atas keterlambatan pengiriman. Admin akan koordinasi dengan tim logistik "
+                "dan segera menghubungi Anda."
+            )
+
+        # Promo/promotion keywords
+        if any(keyword in msg_lower for keyword in ["promo", "diskon", "promosi", "potongan"]):
+            return (
+                "Untuk info promo terbaru, admin akan segera informasikan ke Anda. "
+                "Terima kasih sudah bertanya."
+            )
+
+        # Complaint keywords
+        if any(keyword in msg_lower for keyword in ["komplain", "keluhan", "kecewa", "marah"]):
+            return (
+                "Mohon maaf atas ketidaknyamanan yang Anda alami. Admin akan segera menghubungi "
+                "dan membantu menyelesaikan masalah ini."
+            )
+
+        # Default generic support response
         return (
-            "Terima kasih atas pesannya. Saya adalah asisten otomatis — "
-            "kami akan membantu Anda segera. Jika Anda ingin berbicara dengan manusia, ketik 'agent'."
+            "Terima kasih pesannya. Admin support akan segera membantu Anda. "
+            "Untuk bantuan lebih cepat, ketik 'agent' untuk terhubung langsung dengan admin."
         )
 
 

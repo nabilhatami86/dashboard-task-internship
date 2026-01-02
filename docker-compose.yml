@@ -1,35 +1,77 @@
-services:
-  backend:
-    build: .
-    container_name: dashboard_backend
-    ports:
-      - "8000:8000"
-    env_file:
-      - .env
-    environment:
-      DB_HOST: db
-    depends_on:
-      - db
-    volumes:
-      - .:/app
-    command: >
-      sh -c "
-      alembic upgrade head &&
-      uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-      "
+version: "3.9"
 
+services:
+  # PostgreSQL Database
   db:
     image: postgres:16
-    container_name: asmi_postgres
+    container_name: dashboard-postgres
     restart: always
     environment:
-      POSTGRES_DB: asmi_db
+      POSTGRES_DB: dashboard_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 123
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API (FastAPI + Python)
+  backend:
+    build:
+      context: ./backend-dashboard-python/backend-dashboard-python.backup
+      dockerfile: Dockerfile
+    container_name: dashboard-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend-dashboard-python/backend-dashboard-python.backup/.env
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=asmi_db
+      - DB_USER=postgres
+      - DB_PASSWORD=123
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend-dashboard-python/backend-dashboard-python.backup:/app
+    command: >
+      sh -c "
+      echo 'Waiting for database...' &&
+      sleep 5 &&
+      alembic upgrade head &&
+      echo 'Starting FastAPI server...' &&
+      uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend (Next.js)
+  frontend:
+    build:
+      context: ./dashboard-message-center
+      dockerfile: Dockerfile
+    container_name: dashboard-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
 
 volumes:
   postgres_data:
+    driver: local

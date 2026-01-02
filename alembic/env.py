@@ -5,7 +5,6 @@ from sqlalchemy import pool
 
 from app.config.database import Base, engine
 from app.models.user import User
-from app.models.category import Category
 
 # Alembic Config object
 config = context.config

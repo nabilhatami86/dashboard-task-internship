@@ -6,12 +6,13 @@ from app.whapi.webhook import router as whapi_router
 
 from app.config.database import engine, Base
 from app.config.deps import get_db
-from app.routes import auth, chat
+from app.routes import auth, chat, users, admin_chat
 
 # Import models to ensure they're registered with Base
 from app.models.user import User
 from app.models.chat import Chat
 from app.models.message import Message
+from app.models.admin_message import AdminMessage
 
 # create tables
 Base.metadata.create_all(bind=engine)
@@ -45,6 +46,8 @@ def startup_db_check():
 # routes
 app.include_router(auth.router)
 app.include_router(chat.router)
+app.include_router(users.router)
+app.include_router(admin_chat.router)
 app.include_router(whapi_router)
 
 

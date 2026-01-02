@@ -12,6 +12,7 @@ class RegisterSchema(BaseModel):
     email: EmailStr
     username: str
     password: str
+    phone: str | None = None
     role: RoleEnum
 
     @field_validator("password")

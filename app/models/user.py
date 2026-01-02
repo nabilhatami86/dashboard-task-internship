@@ -17,6 +17,7 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     username = Column(String, unique=True, index=True, nullable=False)
     password = Column(String, nullable=False)
+    phone = Column(String, nullable=True)
     role = Column(Enum(UserRole, name="user_role"), nullable=False)
     created_at = Column(
         DateTime(timezone=True),

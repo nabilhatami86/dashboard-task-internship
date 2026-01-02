@@ -24,6 +24,7 @@ def register_user(data, db: Session):
         email=data.email,
         username=data.username,
         password=hash_password(data.password),
+        phone=data.phone,
         role=data.role
     )
 
@@ -37,6 +38,7 @@ def register_user(data, db: Session):
                 "name":user.name,
                 "username":user.username,
                 "email":user.email,
+                "phone":user.phone,
                 "role": user.role.value
 
             }}
@@ -77,6 +79,7 @@ def login_user(data, db: Session):
             "name": user.name,
             "username": user.username,
             "email": user.email,
+            "phone": user.phone,
             "role": user.role.value
         },
         "access_token": token,

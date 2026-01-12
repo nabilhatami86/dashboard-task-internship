@@ -11,16 +11,22 @@ Dashboard lengkap untuk mengelola pesan WhatsApp dengan fitur chatbot otomatis, 
 - ✅ **WhatsApp Integration** - Connect via Whapi.cloud API
 - 🤖 **Automated Chatbot** - Auto-response untuk customer & internal chat
 - 💬 **Real-time Messaging** - Smart refresh system (WhatsApp-style)
-- 👥 **Multi-user Support** - Admin & Agent roles
-- 🔐 **Authentication** - JWT-based dengan role management
-- 📊 **Dashboard Analytics** - Counter untuk unread messages
+- 👥 **Multi-user Support** - Admin & Agent roles dengan sidebar navigation
+- 🔐 **Authentication** - JWT-based dengan role management & auto-logout
+- 📊 **Dashboard Analytics** - Monitoring dashboard dengan real-time stats
+- 🎫 **Ticket Queue System** - FIFO ticket assignment untuk agent
+- 🎨 **Multi-Theme System** - 6 pilihan tema dengan smooth transitions
 
 ### 💡 Advanced Features
 - 🔄 **Smart Polling** - Adaptive refresh dengan exponential backoff
 - 👁️ **Visibility API** - Auto-pause saat tab tidak aktif
-- 🎨 **Modern UI** - Built with Next.js 16 & Tailwind CSS
+- 📱 **Responsive Sidebar** - Collapsible sidebar dengan mobile support
+- 🌈 **Dynamic Theming** - Default, Dark, Blue, Purple, Green, Ocean themes
+- 🎯 **Agent Dashboard** - Expandable sidebar dengan theme switcher
+- 📈 **Admin Monitoring** - Premium glassmorphism UI dengan progress bars
 - 🐳 **Docker Ready** - Production-ready containerization
 - 🚀 **CI/CD Pipeline** - Automated testing & deployment
+- 🌐 **Custom Dev Server** - Menampilkan semua network interfaces
 
 ## 📁 Project Structure
 
@@ -42,16 +48,27 @@ Dashboard/
 ├── dashboard-message-center/          # Next.js Frontend
 │   ├── app/                          # App router pages
 │   │   ├── dashboard-admin/         # Admin dashboard
+│   │   ├── dashboard-admin-monitoring/ # Monitoring dashboard
 │   │   ├── dashboard-agent/         # Agent dashboard
+│   │   ├── dashboard-agent-queue/   # Ticket queue
 │   │   └── login/                   # Authentication
 │   ├── components/                   # React components
 │   │   ├── auth/                    # Auth components
 │   │   ├── chat/                    # Chat UI
-│   │   └── customer/                # Customer details
+│   │   ├── customer/                # Customer details
+│   │   ├── providers/               # Theme & auth providers
+│   │   └── ui/                      # UI components
+│   │       ├── agent-sidebar.tsx    # Agent sidebar
+│   │       ├── app-sidebar.tsx      # Admin sidebar
+│   │       └── theme-switcher.tsx   # Theme selector
 │   ├── hooks/                        # Custom React hooks
 │   │   └── useSmartRefresh.ts       # Adaptive polling
 │   ├── lib/                          # Utilities & API
+│   │   └── themes.ts                # Theme configurations
 │   ├── store/                        # Zustand state management
+│   │   ├── authStore.ts             # Authentication state
+│   │   └── themeStore.ts            # Theme state
+│   ├── server.js                     # Custom Next.js server
 │   ├── Dockerfile                    # Frontend container
 │   └── package.json                  # Node dependencies
 │
@@ -133,8 +150,11 @@ cd dashboard-message-center
 # Install dependencies
 npm install
 
-# Start dev server
+# Start dev server (with custom server & network info)
 npm run dev
+
+# Or use default Next.js dev server
+npm run dev:default
 ```
 
 ## 🐳 Docker Setup
@@ -239,7 +259,7 @@ Full API documentation: http://localhost:8000/docs
 # Database
 DB_HOST=localhost
 DB_PORT=5432
-DB_NAME=asmi_db
+DB_NAME=dashboard_db
 DB_USER=postgres
 DB_PASSWORD=your_password
 
@@ -251,12 +271,43 @@ ACCESS_TOKEN_EXPIRE_MINUTES=160
 # WhatsApp API
 WHAPI_BASE_URL=https://gate.whapi.cloud
 WHAPI_TOKEN=your_whapi_token
+WHAPI_URL=https://gate.whapi.cloud
 ```
 
 **Frontend (.env.local):**
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
+
+### Theme System
+
+6 pre-configured themes tersedia:
+
+1. **☀️ Default Light** - Clean white theme dengan blue accents
+2. **🌙 Dark Mode** - Dark theme untuk low-light environments
+3. **🌊 Ocean Blue** - Fresh blue theme dengan sky gradients
+4. **💜 Purple Dream** - Elegant purple dengan pink accents
+5. **🌲 Forest Green** - Natural green theme
+6. **🐋 Deep Ocean** - Dark blue ocean-inspired theme
+
+Themes menggunakan CSS custom properties dan tersimpan di localStorage via Zustand persist middleware.
+
+### Startup Information Display
+
+Saat development, aplikasi menampilkan informasi lengkap:
+
+**Backend (FastAPI):**
+- Database connection details (host, port, database name)
+- Loaded models & tables
+- All API routes dengan endpoints
+- CORS configuration
+- Environment variables (password/token masked)
+
+**Frontend (Next.js):**
+- All available network interfaces (Wi-Fi, Ethernet, VPN, Docker)
+- Project info & working directory
+- Enabled features & server actions
+- Available pages & routes
 
 ### Smart Refresh Configuration
 
@@ -269,6 +320,36 @@ const { markActivity } = useSmartRefresh({
   enabled: true
 });
 ```
+
+## 🎨 UI Components
+
+### Sidebar Components
+
+**AgentSidebar** (`components/ui/agent-sidebar.tsx`)
+- Expandable/collapsible sidebar (w-20 collapsed, w-64 expanded)
+- Mobile responsive dengan hamburger menu
+- Menu items: Customer Chats, Admin Chat, Ticket Queue
+- Theme switcher & logout button
+- Tooltips untuk collapsed state
+- Smooth transitions (300ms ease-in-out)
+
+**AppSidebar** (`components/ui/app-sidebar.tsx`)
+- Admin dashboard sidebar
+- Filter options: All Tickets, Assigned, Unassigned
+- Dashboard monitoring navigation
+- Chat list dengan real-time counts
+- Theme switcher integration
+
+**ThemeSwitcher** (`components/ui/theme-switcher.tsx`)
+- Dropdown list dengan 6 themes
+- Color preview dots untuk setiap theme
+- Active theme indicator dengan checkmark
+- Bottom-positioned dropdown (agar tidak tertutup)
+- Scrollable list untuk scalability
+
+### Theme Provider
+
+ThemeProvider (`components/providers/theme-provider.tsx`) automatically applies theme on mount dan sync dengan Zustand store.
 
 ## 🛠️ Development
 
@@ -380,6 +461,59 @@ lsof -i :8000
 - Check `useSmartRefresh` configuration
 - Verify network tab in browser DevTools
 - Check console for errors
+
+**Theme dropdown tertutup sidebar:**
+- Fixed: Dropdown sekarang muncul ke atas (`bottom-full mb-2`)
+- Width disesuaikan agar tidak overflow
+
+**ESLint errors:**
+```bash
+# Fix common errors
+npm run lint
+
+# Common fixes:
+# - TypeScript 'any': Use proper type checking (instanceof Error)
+# - setState in effect: Use useMemo for computed values
+# - Impure functions: Move Date.now() ke useEffect
+```
+
+**Sidebar tidak bisa expand:**
+- AgentSidebar: Default state `useState(true)` untuk open by default
+- Toggle button di bagian bawah sidebar (desktop)
+- Hamburger menu untuk mobile
+
+**Network interfaces tidak muncul:**
+- Pastikan menggunakan `npm run dev` (bukan `npm run dev:default`)
+- Custom server akan menampilkan semua interfaces (Wi-Fi, VPN, Docker, etc)
+
+## 🧰 Technology Stack
+
+### Frontend
+- **Framework**: Next.js 16.0.10 (App Router, Turbopack)
+- **UI Library**: React 19.2.1
+- **Styling**: Tailwind CSS v4, tailwindcss-animate
+- **State Management**: Zustand 5.0.9 (with persist middleware)
+- **Components**: Radix UI (Avatar, Dialog, Dropdown, ScrollArea, Separator, Slot, Tooltip)
+- **Icons**: Lucide React 0.561.0
+- **Animations**: Framer Motion 12.23.26
+- **Utilities**: clsx, tailwind-merge, class-variance-authority
+- **Language**: TypeScript 5
+
+### Backend
+- **Framework**: FastAPI
+- **Database**: PostgreSQL
+- **ORM**: SQLAlchemy
+- **Migrations**: Alembic
+- **Authentication**: JWT (JSON Web Tokens)
+- **API Integration**: WhatsApp via Whapi.cloud
+- **Language**: Python 3.11+
+
+### DevOps & Tools
+- **Containerization**: Docker & Docker Compose
+- **CI/CD**: GitHub Actions
+- **Reverse Proxy**: Nginx
+- **Linting**: ESLint 9, eslint-config-next
+- **Version Control**: Git
 
 ## 📚 Documentation
 

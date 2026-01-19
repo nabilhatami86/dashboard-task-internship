@@ -7,11 +7,13 @@ services:
     container_name: dashboard-postgres-prod
     restart: always
     environment:
-      POSTGRES_DB: ${DB_NAME:-asmi_db}
+      POSTGRES_DB: ${DB_NAME:-dashboard_db}
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -25,23 +27,27 @@ services:
     image: ghcr.io/${GITHUB_USERNAME}/${REPO_NAME}/backend:${IMAGE_TAG:-latest}
     container_name: dashboard-backend-prod
     restart: always
+    ports:
+      - "8000:8000"
     environment:
       - DB_HOST=db
       - DB_PORT=5432
-      - DB_NAME=${DB_NAME:-asmi_db}
+      - DB_NAME=${DB_NAME:-dashboard_db}
       - DB_USER=${DB_USER:-postgres}
       - DB_PASSWORD=${DB_PASSWORD}
       - SECRET_KEY=${SECRET_KEY}
       - WHAPI_TOKEN=${WHAPI_TOKEN}
       - WHAPI_BASE_URL=${WHAPI_BASE_URL:-https://gate.whapi.cloud}
+      - WHAPI_URL=${WHAPI_URL:-https://gate.whapi.cloud}
     depends_on:
       db:
         condition: service_healthy
     command: >
       sh -c "
-      echo 'Running database migrations...' &&
+      echo '🚀 Running database migrations...' &&
       alembic upgrade head &&
-      echo 'Starting production server...' &&
+      echo '✅ Migrations complete' &&
+      echo '🔥 Starting production server with 4 workers...' &&
       uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
       "
     healthcheck:
@@ -58,28 +64,19 @@ services:
     image: ghcr.io/${GITHUB_USERNAME}/${REPO_NAME}/frontend:${IMAGE_TAG:-latest}
     container_name: dashboard-frontend-prod
     restart: always
+    ports:
+      - "3000:3000"
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://backend:8000}
     depends_on:
       - backend
-    networks:
-      - dashboard-network
-
-  # Nginx Reverse Proxy
-  nginx:
-    image: nginx:alpine
-    container_name: dashboard-nginx
-    restart: always
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
-    depends_on:
-      - frontend
-      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     networks:
       - dashboard-network
 

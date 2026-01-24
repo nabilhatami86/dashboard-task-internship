@@ -6,7 +6,7 @@ import { contactsCache } from "./socket.js";
  * Normalize phone number from various WhatsApp formats
  * Handles: @s.whatsapp.net, @c.us, @lid (linked device ID)
  */
-const normalizePhone = (jid, msg) => {
+const normalizePhone = async (jid, msg, sock) => {
   if (!jid) return null;
 
   // Check if participant exists (for group messages or when JID is LID)
@@ -18,15 +18,74 @@ const normalizePhone = (jid, msg) => {
     }
   }
 
-  // LID format - check cache for resolved phone
+  // LID format - try multiple resolution methods
   if (jid.endsWith("@lid")) {
+    // Method 1: Check cache for resolved phone
     if (contactsCache.has(jid)) {
       const phone = contactsCache.get(jid);
       logger.info(`Resolved LID ${jid} to phone ${phone} from cache`);
       return phone;
     }
-    // Can't resolve LID - return as is, pushName will be used for display
-    logger.warn(`LID format: ${jid}. Using pushName for display.`);
+
+    // Method 2: Extract from msg.key.senderPn (sender phone number) - THIS IS THE KEY!
+    // senderPn contains the real phone number for LID accounts
+    if (msg?.key?.senderPn) {
+      const phone = msg.key.senderPn.split("@")[0] + "@c.us";
+      contactsCache.set(jid, phone);
+      logger.info(`✅ Resolved LID ${jid} to phone ${phone} from senderPn`);
+      return phone;
+    }
+
+    // Method 3: Extract from LID itself (LID sometimes contains encoded phone)
+    // LID format dapat berupa: <phone_encoded>@lid
+    const lidNumber = jid.split("@")[0];
+
+    // Method 4: Try to get from sock.user or message metadata
+    // For personal chats, the sender phone might be in message metadata
+    if (msg?.participant) {
+      const phoneMatch = msg.participant.match(/^(\d+)@/);
+      if (phoneMatch) {
+        const phone = phoneMatch[1] + "@c.us";
+        contactsCache.set(jid, phone);
+        logger.info(`Resolved LID ${jid} to phone ${phone} from msg.participant`);
+        return phone;
+      }
+    }
+
+    // Method 4: Extract dari verifiedBizName atau contact info lainnya
+    if (msg?.verifiedBizName) {
+      logger.info(`Business account detected: ${msg.verifiedBizName} for LID ${jid}`);
+    }
+
+    // Method 5: Untuk personal chat, extract dari message properties
+    // Cek apakah ada contact info di message
+    if (msg?.pushName) {
+      logger.info(`LID ${jid} has pushName: ${msg.pushName}`);
+    }
+
+    // Method 6: Try to query contact dari sock
+    if (sock) {
+      try {
+        // WhatsApp onWhatsApp query dengan nomor dari LID
+        // LID format biasanya: <some_number>@lid, coba query nomor tersebut
+        const queryNum = lidNumber;
+        logger.info(`Trying onWhatsApp query for: ${queryNum}`);
+        const result = await sock.onWhatsApp(queryNum);
+        logger.info(`onWhatsApp result for ${queryNum}: ${JSON.stringify(result)}`);
+
+        if (result && result.length > 0 && result[0].jid) {
+          const phone = result[0].jid.split("@")[0] + "@c.us";
+          contactsCache.set(jid, phone);
+          logger.info(`✅ Resolved LID ${jid} to phone ${phone} from onWhatsApp query`);
+          return phone;
+        }
+      } catch (e) {
+        logger.warn(`Failed to query onWhatsApp for ${lidNumber}: ${e.message}`);
+      }
+    }
+
+    // Gagal resolve - return LID as is, pushName will be used for display
+    logger.warn(`❌ Could not resolve LID: ${jid}. Will use pushName for display.`);
     return jid;
   }
 
@@ -131,6 +190,20 @@ export const registerEvents = (sock) => {
         // Skip broadcast/status
         if (msg.key.remoteJid === "status@broadcast") continue;
 
+        // DEBUG: Log full message object untuk lihat struktur
+        logger.info(`DEBUG Full message object: ${JSON.stringify({
+          key: msg.key,
+          pushName: msg.pushName,
+          verifiedBizName: msg.verifiedBizName,
+          messageTimestamp: msg.messageTimestamp,
+          senderPn: msg.key?.senderPn || 'N/A',
+        }, null, 2)}`);
+
+        // If LID, log the extracted phone
+        if (msg.key?.remoteJid?.endsWith('@lid') && msg.key?.senderPn) {
+          logger.info(`📞 LID ${msg.key.remoteJid} -> Real phone: ${msg.key.senderPn}`);
+        }
+
         const text = extractText(msg.message);
         if (!text) {
           logger.warn(`Unsupported message type from ${msg.key.remoteJid}`);
@@ -138,7 +211,7 @@ export const registerEvents = (sock) => {
         }
 
         // Normalize phone number (handle LID format)
-        const normalizedFrom = normalizePhone(msg.key.remoteJid, msg);
+        const normalizedFrom = await normalizePhone(msg.key.remoteJid, msg, sock);
 
         const payload = {
           from: normalizedFrom,

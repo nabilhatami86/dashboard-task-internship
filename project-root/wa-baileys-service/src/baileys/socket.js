@@ -106,6 +106,18 @@ export const initSocket = async () => {
     // 💾 SIMPAN SESSION (INI WAJIB)
     sock.ev.on("creds.update", saveCreds);
 
+    // 📞 CONTACTS SYNC - untuk build LID mapping
+    sock.ev.on("contacts.set", ({ contacts }) => {
+      logger.info(`Received ${contacts.length} contacts from sync`);
+      for (const contact of contacts) {
+        if (contact.lid && contact.id) {
+          const phone = contact.id.split("@")[0] + "@c.us";
+          contactsCache.set(contact.lid, phone);
+          logger.info(`Contacts sync: LID ${contact.lid} -> ${phone} (${contact.name || contact.notify})`);
+        }
+      }
+    });
+
     // 📩 REGISTER MESSAGE EVENTS - forward ke Python backend
     registerEvents(sock);
   } catch (error) {

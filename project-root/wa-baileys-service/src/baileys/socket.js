@@ -92,7 +92,9 @@ export const initSocket = async () => {
         } else if (shouldReconnect && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
           reconnectAttempts++;
           const waitTime = Math.min(reconnectAttempts * 2000, 10000);
-          logger.warn(`Reconnecting in ${waitTime / 1000}s... (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+          logger.warn(
+            `Reconnecting in ${waitTime / 1000}s... (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`,
+          );
           isConnecting = false;
           await delay(waitTime);
           initSocket();
@@ -154,11 +156,19 @@ export const getConnectionStatus = () => {
 };
 
 // ✉️ KIRIM PESAN
-export const sendText = async (jid, text) => {
+export const sendText = async (jid, text, mentions = []) => {
   if (!sock) {
     throw new Error("WA socket not initialized");
   }
-  return sock.sendMessage(jid, { text });
+
+  const messagePayload = { text };
+
+  // Add mentions jika ada (untuk group messages)
+  if (mentions && mentions.length > 0) {
+    messagePayload.mentions = mentions;
+  }
+
+  return sock.sendMessage(jid, messagePayload);
 };
 
 // Export contacts cache for LID resolution

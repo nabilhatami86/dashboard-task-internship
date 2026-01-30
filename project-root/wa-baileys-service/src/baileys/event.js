@@ -2,10 +2,19 @@ import { sendToBackend } from "../services/webhook.service.js";
 import { logger } from "../utils/logger.js";
 import { contactsCache } from "./socket.js";
 
-/**
- * Normalize phone number from various WhatsApp formats
- * Handles: @s.whatsapp.net, @c.us, @lid (linked device ID)
- */
+const normalizeJid = (jid) => {
+  if (!jid) return null;
+
+  // buang device id (:4, :5, dst)
+  const clean = jid.split(":")[0];
+
+  // pastikan format @lid / @s.whatsapp.net tetap utuh
+  if (clean.endsWith("@lid")) return clean;
+  if (clean.endsWith("@s.whatsapp.net")) return clean;
+
+  return clean;
+};
+
 const normalizePhone = async (jid, msg, sock) => {
   if (!jid) return null;
 
@@ -191,39 +200,79 @@ export const registerEvents = (sock) => {
         if (msg.key.remoteJid === "status@broadcast") continue;
 
         // DEBUG: Log full message object untuk lihat struktur
-        logger.info(`DEBUG Full message object: ${JSON.stringify({
-          key: msg.key,
-          pushName: msg.pushName,
-          verifiedBizName: msg.verifiedBizName,
-          messageTimestamp: msg.messageTimestamp,
-          senderPn: msg.key?.senderPn || 'N/A',
-        }, null, 2)}`);
+        logger.info(
+          `DEBUG Full message object: ${JSON.stringify(
+            {
+              key: msg.key,
+              pushName: msg.pushName,
+              verifiedBizName: msg.verifiedBizName,
+              messageTimestamp: msg.messageTimestamp,
+              senderPn: msg.key?.senderPn || "N/A",
+            },
+            null,
+            2,
+          )}`,
+        );
+
+        // DEBUG: Log message content structure
+        logger.info(`DEBUG Message content: ${JSON.stringify(msg.message, null, 2)}`);
 
         // If LID, log the extracted phone
-        if (msg.key?.remoteJid?.endsWith('@lid') && msg.key?.senderPn) {
+        if (msg.key?.remoteJid?.endsWith("@lid") && msg.key?.senderPn) {
           logger.info(`📞 LID ${msg.key.remoteJid} -> Real phone: ${msg.key.senderPn}`);
         }
 
         const text = extractText(msg.message);
+        logger.info(`DEBUG Extracted text: "${text}"`);
+
         if (!text) {
-          logger.warn(`Unsupported message type from ${msg.key.remoteJid}`);
+          logger.warn(`⚠️ Unsupported message type from ${msg.key.remoteJid} - No text extracted`);
+          logger.warn(`Message keys: ${Object.keys(msg.message || {}).join(', ')}`);
           continue;
         }
 
         // Normalize phone number (handle LID format)
-        const normalizedFrom = await normalizePhone(msg.key.remoteJid, msg, sock);
+        const remoteJid = msg.key.remoteJid;
+        const isGroup = remoteJid.endsWith("@g.us");
+
+        // =========================
+        // 🔥 DETEKSI BOT DI-TAG
+        // =========================
+
+        let isMentioned = false;
+        let mentionedJid = [];
+
+        if (isGroup) {
+          const context = msg.message?.extendedTextMessage?.contextInfo;
+          mentionedJid = context?.mentionedJid || [];
+
+          isMentioned = mentionedJid.length > 0;
+
+          logger.info(`[GROUP CHECK] mentioned=${isMentioned} mentionedJid=${JSON.stringify(mentionedJid)}`);
+        }
+
+        let from;
+
+        if (isGroup) {
+          from = remoteJid;
+        } else {
+          from = await normalizePhone(remoteJid, msg, sock);
+        }
 
         const payload = {
-          from: normalizedFrom,
+          from: from,
+          isMentioned: isMentioned,
+          mentionedJid: mentionedJid,
+          isGroup: isGroup,
           pushName: msg.pushName || null,
           text: text,
           timestamp: msg.messageTimestamp,
           messageId: msg.key.id,
-          // Include original JID for reference
           originalJid: msg.key.remoteJid,
+          participant: msg.key.participant || null,  // Add participant for group messages
         };
-
-        logger.info(`Incoming message from ${msg.pushName || msg.key.remoteJid}: ${text.substring(0, 50)}...`);
+        logger.info(`[SEND BACKEND] isGroup=${isGroup} from=${from} text="${text}" mentioned=${isMentioned}`);
+        logger.info(`[PAYLOAD] ${JSON.stringify(payload, null, 2)}`);
 
         await sendToBackend(payload);
       } catch (error) {

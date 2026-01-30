@@ -17,6 +17,13 @@ const transformToWhapiFormat = (payload) => {
         text: { body: payload.text },
         id: payload.messageId,
         timestamp: payload.timestamp,
+        // ✅ PENTING: Include mention data untuk group handling
+        isMentioned: payload.isMentioned || false,
+        mentionedJid: payload.mentionedJid || [],
+        isGroup: payload.isGroup || false,
+        // ✅ PENTING: Include participant untuk group messages
+        // Participant = pengirim asli di grup (bukan group ID)
+        participant: payload.participant || null,
       },
     ],
     // Marker untuk Python backend tahu ini dari Baileys

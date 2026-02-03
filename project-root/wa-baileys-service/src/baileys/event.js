@@ -2,6 +2,43 @@ import { sendToBackend } from "../services/webhook.service.js";
 import { logger } from "../utils/logger.js";
 import { contactsCache } from "./socket.js";
 
+// Message deduplication cache - prevents processing same message twice
+// Key: messageId, Value: timestamp of processing
+const processedMessages = new Map();
+const MESSAGE_CACHE_TTL = 60000; // 60 seconds TTL
+const MAX_CACHE_SIZE = 1000;
+
+/**
+ * Check if message was already processed
+ * @param {string} messageId - The message ID to check
+ * @returns {boolean} - True if already processed, false otherwise
+ */
+const isMessageProcessed = (messageId) => {
+  if (!messageId) return false;
+
+  // Clean old entries periodically
+  if (processedMessages.size > MAX_CACHE_SIZE) {
+    const now = Date.now();
+    for (const [id, timestamp] of processedMessages) {
+      if (now - timestamp > MESSAGE_CACHE_TTL) {
+        processedMessages.delete(id);
+      }
+    }
+  }
+
+  return processedMessages.has(messageId);
+};
+
+/**
+ * Mark message as processed
+ * @param {string} messageId - The message ID to mark
+ */
+const markMessageProcessed = (messageId) => {
+  if (messageId) {
+    processedMessages.set(messageId, Date.now());
+  }
+};
+
 const normalizeJid = (jid) => {
   if (!jid) return null;
 
@@ -199,6 +236,21 @@ export const registerEvents = (sock) => {
         // Skip broadcast/status
         if (msg.key.remoteJid === "status@broadcast") continue;
 
+        // 🛡️ DEDUPLICATION: Skip if message was already processed
+        const messageId = msg.key.id;
+        if (isMessageProcessed(messageId)) {
+          logger.info(`[DEDUP] Skipping duplicate message: ${messageId}`);
+          continue;
+        }
+
+        // 🔄 LID RETRY WAIT: If LID format but no senderPn, skip and wait for retry
+        // Baileys will retry the message and the retried version will have senderPn
+        const remoteJid = msg.key.remoteJid;
+        if (remoteJid?.endsWith("@lid") && !msg.key?.senderPn) {
+          logger.info(`[LID WAIT] Skipping LID message without senderPn, waiting for retry: ${messageId}`);
+          continue;
+        }
+
         // DEBUG: Log full message object untuk lihat struktur
         logger.info(
           `DEBUG Full message object: ${JSON.stringify(
@@ -232,7 +284,7 @@ export const registerEvents = (sock) => {
         }
 
         // Normalize phone number (handle LID format)
-        const remoteJid = msg.key.remoteJid;
+        // remoteJid already declared above
         const isGroup = remoteJid.endsWith("@g.us");
 
         // =========================
@@ -252,9 +304,58 @@ export const registerEvents = (sock) => {
         }
 
         let from;
+        let groupName = null;
+        let participantPhone = null;
+        let participantName = null;
 
         if (isGroup) {
           from = remoteJid;
+          // Try to get group name
+          try {
+            const groupMeta = await sock.groupMetadata(remoteJid);
+            groupName = groupMeta?.subject || null;
+            logger.info(`[GROUP META] name="${groupName}" for ${remoteJid}`);
+          } catch (e) {
+            logger.warn(`Failed to get group metadata: ${e.message}`);
+          }
+
+          // 📱 RESOLVE PARTICIPANT: Ambil nomor telepon pengirim di grup
+          const rawParticipant = msg.key.participant;
+          if (rawParticipant) {
+            // Check if participant is LID format
+            if (rawParticipant.endsWith("@lid")) {
+              // Try to resolve LID to phone number
+              // Method 1: Check cache
+              if (contactsCache.has(rawParticipant)) {
+                participantPhone = contactsCache.get(rawParticipant);
+                logger.info(`[GROUP] Resolved participant LID ${rawParticipant} to ${participantPhone} from cache`);
+              }
+              // Method 2: senderPn contains the real phone for LID
+              else if (msg.key?.senderPn) {
+                participantPhone = msg.key.senderPn.split("@")[0] + "@c.us";
+                contactsCache.set(rawParticipant, participantPhone);
+                logger.info(`[GROUP] Resolved participant LID ${rawParticipant} to ${participantPhone} from senderPn`);
+              }
+              // Method 3: Use LID number as fallback (won't work for mentions but at least shows something)
+              else {
+                participantPhone = rawParticipant.split("@")[0] + "@lid";
+                logger.warn(`[GROUP] Could not resolve participant LID ${rawParticipant}, using as-is`);
+              }
+            } else {
+              // Standard format: extract phone number
+              const phoneMatch = rawParticipant.match(/^(\d+)@/);
+              if (phoneMatch) {
+                participantPhone = phoneMatch[1] + "@c.us";
+              } else {
+                participantPhone = rawParticipant;
+              }
+              logger.info(`[GROUP] Participant phone: ${participantPhone}`);
+            }
+          }
+
+          // Get participant name from pushName
+          participantName = msg.pushName || null;
+          logger.info(`[GROUP] participant=${participantPhone} name="${participantName}" group="${groupName}"`);
         } else {
           from = await normalizePhone(remoteJid, msg, sock);
         }
@@ -269,10 +370,15 @@ export const registerEvents = (sock) => {
           timestamp: msg.messageTimestamp,
           messageId: msg.key.id,
           originalJid: msg.key.remoteJid,
-          participant: msg.key.participant || null,  // Add participant for group messages
+          participant: participantPhone || msg.key.participant || null,  // Resolved phone for group messages
+          participantName: participantName,  // Name of sender in group
+          groupName: groupName,  // Group name
         };
         logger.info(`[SEND BACKEND] isGroup=${isGroup} from=${from} text="${text}" mentioned=${isMentioned}`);
         logger.info(`[PAYLOAD] ${JSON.stringify(payload, null, 2)}`);
+
+        // Mark as processed BEFORE sending to prevent race conditions
+        markMessageProcessed(messageId);
 
         await sendToBackend(payload);
       } catch (error) {

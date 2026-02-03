@@ -24,6 +24,8 @@ const transformToWhapiFormat = (payload) => {
         // ✅ PENTING: Include participant untuk group messages
         // Participant = pengirim asli di grup (bukan group ID)
         participant: payload.participant || null,
+        // ✅ Include group name
+        groupName: payload.groupName || null,
       },
     ],
     // Marker untuk Python backend tahu ini dari Baileys

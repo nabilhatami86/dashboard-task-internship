@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venvScriptsalembic.exe current)",
+      "Bash(.venv/Scripts/alembic.exe current:*)",
+      "Bash(.venv/Scripts/alembic.exe upgrade head)",
+      "Bash(python:*)",
+      "Bash(curl:*)"
+    ]
+  }
+}

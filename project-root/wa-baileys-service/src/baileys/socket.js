@@ -171,6 +171,45 @@ export const sendText = async (jid, text, mentions = []) => {
   return sock.sendMessage(jid, messagePayload);
 };
 
+// 🖼️ KIRIM IMAGE
+export const sendImage = async (jid, buffer, caption = "", mimetype = "image/jpeg", mentions = []) => {
+  if (!sock) {
+    throw new Error("WA socket not initialized");
+  }
+
+  const messagePayload = {
+    image: buffer,
+    caption: caption || undefined,
+    mimetype,
+  };
+
+  if (mentions && mentions.length > 0) {
+    messagePayload.mentions = mentions;
+  }
+
+  return sock.sendMessage(jid, messagePayload);
+};
+
+// 📄 KIRIM DOCUMENT
+export const sendDocument = async (jid, buffer, filename = "file", mimetype = "application/octet-stream", caption = "", mentions = []) => {
+  if (!sock) {
+    throw new Error("WA socket not initialized");
+  }
+
+  const messagePayload = {
+    document: buffer,
+    fileName: filename,
+    mimetype,
+    caption: caption || undefined,
+  };
+
+  if (mentions && mentions.length > 0) {
+    messagePayload.mentions = mentions;
+  }
+
+  return sock.sendMessage(jid, messagePayload);
+};
+
 // Export contacts cache for LID resolution
 export { contactsCache };
 

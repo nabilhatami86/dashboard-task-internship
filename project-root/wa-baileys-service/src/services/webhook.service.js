@@ -26,6 +26,11 @@ const transformToWhapiFormat = (payload) => {
         participant: payload.participant || null,
         // ✅ Include group name
         groupName: payload.groupName || null,
+        // ✅ Include media data
+        mediaBase64: payload.mediaBase64 || null,
+        mediaType: payload.mediaType || null,
+        mediaFilename: payload.mediaFilename || null,
+        mediaMimetype: payload.mediaMimetype || null,
       },
     ],
     // Marker untuk Python backend tahu ini dari Baileys
@@ -49,7 +54,7 @@ export const sendToBackend = async (payload) => {
         "Content-Type": "application/json",
         "x-api-key": ENV.INTERNAL_API_KEY,
       },
-      timeout: 10000, // 10 second timeout
+      timeout: 30000, // 30 second timeout (increased for media)
     });
 
     logger.info(`Webhook sent successfully: ${response.data?.status || "ok"}`);

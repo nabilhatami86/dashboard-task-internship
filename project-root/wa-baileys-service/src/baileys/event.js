@@ -1,3 +1,4 @@
+import { downloadMediaMessage } from "@whiskeysockets/baileys";
 import { sendToBackend } from "../services/webhook.service.js";
 import { logger } from "../utils/logger.js";
 import { contactsCache } from "./socket.js";
@@ -150,6 +151,66 @@ const normalizePhone = async (jid, msg, sock) => {
 };
 
 /**
+ * Detect media type from message
+ * Returns { type, mimetype, filename } or null if not media
+ */
+const detectMedia = (message) => {
+  if (!message) return null;
+
+  if (message.imageMessage) {
+    return {
+      type: "image",
+      mimetype: message.imageMessage.mimetype || "image/jpeg",
+      filename: null,
+      caption: message.imageMessage.caption || null,
+    };
+  }
+  if (message.videoMessage) {
+    return {
+      type: "video",
+      mimetype: message.videoMessage.mimetype || "video/mp4",
+      filename: null,
+      caption: message.videoMessage.caption || null,
+    };
+  }
+  if (message.documentMessage) {
+    return {
+      type: "document",
+      mimetype: message.documentMessage.mimetype || "application/octet-stream",
+      filename: message.documentMessage.fileName || "file",
+      caption: message.documentMessage.caption || null,
+    };
+  }
+  if (message.audioMessage) {
+    return {
+      type: "audio",
+      mimetype: message.audioMessage.mimetype || "audio/ogg",
+      filename: null,
+      caption: null,
+    };
+  }
+
+  return null;
+};
+
+/**
+ * Download media from message and return base64
+ */
+const downloadMedia = async (msg) => {
+  try {
+    const buffer = await downloadMediaMessage(
+      msg,
+      "buffer",
+      {},
+    );
+    return buffer.toString("base64");
+  } catch (err) {
+    logger.error(`Failed to download media: ${err.message}`);
+    return null;
+  }
+};
+
+/**
  * Extract text from various message types
  */
 const extractText = (message) => {
@@ -277,8 +338,29 @@ export const registerEvents = (sock) => {
         const text = extractText(msg.message);
         logger.info(`DEBUG Extracted text: "${text}"`);
 
-        if (!text) {
-          logger.warn(`⚠️ Unsupported message type from ${msg.key.remoteJid} - No text extracted`);
+        // Detect media in message
+        const mediaInfo = detectMedia(msg.message);
+        let mediaBase64 = null;
+        let mediaType = null;
+        let mediaFilename = null;
+        let mediaMimetype = null;
+
+        if (mediaInfo) {
+          logger.info(`[MEDIA] Detected ${mediaInfo.type} (${mediaInfo.mimetype})`);
+          mediaBase64 = await downloadMedia(msg);
+          if (mediaBase64) {
+            mediaType = mediaInfo.type;
+            mediaFilename = mediaInfo.filename;
+            mediaMimetype = mediaInfo.mimetype;
+            logger.info(`[MEDIA] Downloaded ${mediaType}, size: ${mediaBase64.length} chars base64`);
+          } else {
+            logger.warn(`[MEDIA] Failed to download ${mediaInfo.type}, proceeding with text only`);
+          }
+        }
+
+        // Skip if no text AND no media
+        if (!text && !mediaBase64) {
+          logger.warn(`⚠️ Unsupported message type from ${msg.key.remoteJid} - No text or media extracted`);
           logger.warn(`Message keys: ${Object.keys(msg.message || {}).join(', ')}`);
           continue;
         }
@@ -366,13 +448,18 @@ export const registerEvents = (sock) => {
           mentionedJid: mentionedJid,
           isGroup: isGroup,
           pushName: msg.pushName || null,
-          text: text,
+          text: text || (mediaInfo?.caption) || (mediaType ? `[${mediaType.charAt(0).toUpperCase() + mediaType.slice(1)}]` : ""),
           timestamp: msg.messageTimestamp,
           messageId: msg.key.id,
           originalJid: msg.key.remoteJid,
           participant: participantPhone || msg.key.participant || null,  // Resolved phone for group messages
           participantName: participantName,  // Name of sender in group
           groupName: groupName,  // Group name
+          // Media fields
+          mediaBase64: mediaBase64,
+          mediaType: mediaType,
+          mediaFilename: mediaFilename,
+          mediaMimetype: mediaMimetype,
         };
         logger.info(`[SEND BACKEND] isGroup=${isGroup} from=${from} text="${text}" mentioned=${isMentioned}`);
         logger.info(`[PAYLOAD] ${JSON.stringify(payload, null, 2)}`);

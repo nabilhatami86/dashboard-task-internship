@@ -5,7 +5,8 @@
       "Bash(.venv/Scripts/alembic.exe current:*)",
       "Bash(.venv/Scripts/alembic.exe upgrade head)",
       "Bash(python:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(ls /c/Users/muham/Desktop/dashboard-task-internship/project-root/backend-dashboard-python/*.py /c/Users/muham/Desktop/dashboard-task-internship/project-root/backend-dashboard-python/*.sh)"
     ]
   }
 }

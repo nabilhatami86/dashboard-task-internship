@@ -159,7 +159,7 @@ npm run dev:default
 
 ## 🐳 Docker Setup
 
-Detailed Docker documentation: [DOCKER_SETUP.md](./DOCKER_SETUP.md)
+Detailed Docker documentation: [DOCKER_SETUP.md](./docs/DOCKER_SETUP.md)
 
 **Quick commands:**
 ```bash
@@ -181,7 +181,7 @@ docker exec dashboard-postgres pg_dump -U postgres asmi_db > backup.sql
 
 ## 🔄 CI/CD Pipeline
 
-Detailed CI/CD documentation: [CI_CD_SETUP.md](./CI_CD_SETUP.md)
+Detailed CI/CD documentation: [CI_CD_SETUP.md](./docs/CI_CD_SETUP.md)
 
 ### Automated Workflows
 
@@ -517,9 +517,9 @@ npm run lint
 
 ## 📚 Documentation
 
-- [Docker Setup Guide](./DOCKER_SETUP.md) - Complete Docker configuration
-- [CI/CD Setup Guide](./CI_CD_SETUP.md) - GitHub Actions pipelines
-- [Deployment Guide](./DEPLOYMENT_GUIDE.md) - Production deployment
+- [Docker Setup Guide](./docs/DOCKER_SETUP.md) - Complete Docker configuration
+- [CI/CD Setup Guide](./docs/CI_CD_SETUP.md) - GitHub Actions pipelines
+- [Deployment Guide](./docs/DEPLOYMENT_GUIDE.md) - Production deployment
 - [API Documentation](http://localhost:8000/docs) - Swagger/OpenAPI docs
 
 ## 🤝 Contributing

@@ -38,6 +38,28 @@ const transformToWhapiFormat = (payload) => {
   };
 };
 
+export const sendTypingToBackend = async ({ from, is_typing, is_group, participant }) => {
+  const webhookUrl = ENV.PYTHON_WEBHOOK_URL;
+  if (!webhookUrl) return;
+
+  // Derive typing endpoint from base webhook URL
+  const baseUrl = webhookUrl.replace(/\/webhook\/baileys$/, "");
+  const typingUrl = `${baseUrl}/webhook/typing`;
+
+  try {
+    await axios.post(typingUrl, { from, is_typing, is_group, participant }, {
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ENV.INTERNAL_API_KEY,
+      },
+      timeout: 5000,
+    });
+  } catch (error) {
+    // Typing events are best-effort, don't throw
+    logger.warn(`[TYPING WEBHOOK] ${error.message}`);
+  }
+};
+
 export const sendToBackend = async (payload) => {
   const webhookUrl = ENV.PYTHON_WEBHOOK_URL;
 

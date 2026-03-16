@@ -6,7 +6,20 @@
       "Bash(.venv/Scripts/alembic.exe upgrade head)",
       "Bash(python:*)",
       "Bash(curl:*)",
-      "Bash(ls /c/Users/muham/Desktop/dashboard-task-internship/project-root/backend-dashboard-python/*.py /c/Users/muham/Desktop/dashboard-task-internship/project-root/backend-dashboard-python/*.sh)"
+      "Bash(ls /c/Users/muham/Desktop/dashboard-task-internship/project-root/backend-dashboard-python/*.py /c/Users/muham/Desktop/dashboard-task-internship/project-root/backend-dashboard-python/*.sh)",
+      "Bash(xargs grep:*)",
+      "Bash(grep -rn \"EventSource\\\\|stream\\\\|\\\\.on\\\\|\\\\.once\\\\|broadcast\" c:UsersmuhamDesktopdashboard-task-internship --include=*.js --include=*.ts --include=*.tsx --include=*.py)",
+      "Bash(xargs ls:*)",
+      "Bash(find c:UsersmuhamDesktopdashboard-task-internshipproject-rootwa-baileys-service -name *.js -type f)",
+      "Bash(find c:UsersmuhamDesktopdashboard-task-internship -type f \\\\\\(-name *.py -o -name *.tsx -o -name *.ts \\\\\\))",
+      "Bash(.venv/Scripts/pip show:*)",
+      "Bash(.venv/Scripts/pip install:*)",
+      "Bash(.venv/Scripts/python.exe -m pip install httpx)",
+      "Bash(.venv/Scripts/python.exe -c \"import httpx; print\\(''httpx ok:'', httpx.__version__\\)\")",
+      "Bash(.venvScriptspython scripts/debug_ticket_queue.py)",
+      "Bash(.venv/Scripts/python -m alembic heads)",
+      "Bash(npx tsc:*)",
+      "Bash(find c:/Users/muham/Desktop/dashboard-task-internship -name .env* -not -path */node_modules/*)"
     ]
   }
 }

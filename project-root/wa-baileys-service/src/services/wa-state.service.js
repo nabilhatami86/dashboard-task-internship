@@ -76,7 +76,7 @@ export const waState = {
       try {
         callback(currentState);
       } catch (e) {
-        console.error("Listener error:", e);
+        // silently ignore listener errors
       }
     });
   },

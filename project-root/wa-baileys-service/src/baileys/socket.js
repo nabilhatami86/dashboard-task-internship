@@ -4,12 +4,35 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
 } from "@whiskeysockets/baileys";
 import qrcode from "qrcode-terminal";
+import { readFileSync, writeFileSync } from "fs";
 import { logger } from "../utils/logger.js";
 import { registerEvents } from "./event.js";
 import { waState } from "../services/wa-state.service.js";
 
-// Simple contacts cache for LID resolution
+// Persistent contacts cache for LID → phone resolution (survives restarts)
+const CONTACTS_CACHE_FILE = "./contacts-cache.json";
 const contactsCache = new Map();
+
+// Load cache from file on startup
+try {
+  const data = JSON.parse(readFileSync(CONTACTS_CACHE_FILE, "utf8"));
+  for (const [lid, phone] of Object.entries(data)) {
+    contactsCache.set(lid, phone);
+  }
+  logger.info(`Loaded ${contactsCache.size} contacts from cache file`);
+} catch {
+  // File doesn't exist yet, start fresh
+}
+
+// Save cache to file whenever a new LID is learned
+export const saveCachedContact = (lid, phone) => {
+  contactsCache.set(lid, phone);
+  try {
+    writeFileSync(CONTACTS_CACHE_FILE, JSON.stringify(Object.fromEntries(contactsCache)));
+  } catch (e) {
+    logger.warn(`Failed to save contacts cache: ${e.message}`);
+  }
+};
 
 let sock;
 let isConnecting = false;
@@ -48,15 +71,12 @@ export const initSocket = async () => {
         waState.setQR(qr);
 
         // Tampilkan di terminal juga
-        console.log("\n");
         logger.info("╔════════════════════════════════════════════╗");
         logger.info("║   SCAN QR CODE DENGAN WHATSAPP ANDA        ║");
         logger.info("║   WhatsApp > Linked Devices > Link Device  ║");
         logger.info("║   Atau buka Dashboard > WhatsApp Settings  ║");
         logger.info("╚════════════════════════════════════════════╝");
-        console.log("\n");
         qrcode.generate(qr, { small: true });
-        console.log("\n");
       }
 
       // ✅ CONNECTED
@@ -114,7 +134,7 @@ export const initSocket = async () => {
       for (const contact of contacts) {
         if (contact.lid && contact.id) {
           const phone = contact.id.split("@")[0] + "@c.us";
-          contactsCache.set(contact.lid, phone);
+          saveCachedContact(contact.lid, phone);
           logger.info(`Contacts sync: LID ${contact.lid} -> ${phone} (${contact.name || contact.notify})`);
         }
       }
@@ -154,6 +174,9 @@ export const disconnectSocket = async () => {
 export const getConnectionStatus = () => {
   return waState.getState();
 };
+
+// 🔗 GET SOCK INSTANCE (for presence, etc.)
+export const getSock = () => sock;
 
 // ✉️ KIRIM PESAN
 export const sendText = async (jid, text, mentions = []) => {

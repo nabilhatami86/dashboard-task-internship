@@ -1,7 +1,7 @@
 import { downloadMediaMessage } from "@whiskeysockets/baileys";
-import { sendToBackend } from "../services/webhook.service.js";
+import { sendToBackend, sendTypingToBackend } from "../services/webhook.service.js";
 import { logger } from "../utils/logger.js";
-import { contactsCache } from "./socket.js";
+import { contactsCache, saveCachedContact } from "./socket.js";
 
 // Message deduplication cache - prevents processing same message twice
 // Key: messageId, Value: timestamp of processing
@@ -78,7 +78,7 @@ const normalizePhone = async (jid, msg, sock) => {
     // senderPn contains the real phone number for LID accounts
     if (msg?.key?.senderPn) {
       const phone = msg.key.senderPn.split("@")[0] + "@c.us";
-      contactsCache.set(jid, phone);
+      saveCachedContact(jid, phone);
       logger.info(`✅ Resolved LID ${jid} to phone ${phone} from senderPn`);
       return phone;
     }
@@ -93,7 +93,7 @@ const normalizePhone = async (jid, msg, sock) => {
       const phoneMatch = msg.participant.match(/^(\d+)@/);
       if (phoneMatch) {
         const phone = phoneMatch[1] + "@c.us";
-        contactsCache.set(jid, phone);
+        saveCachedContact(jid, phone);
         logger.info(`Resolved LID ${jid} to phone ${phone} from msg.participant`);
         return phone;
       }
@@ -122,7 +122,7 @@ const normalizePhone = async (jid, msg, sock) => {
 
         if (result && result.length > 0 && result[0].jid) {
           const phone = result[0].jid.split("@")[0] + "@c.us";
-          contactsCache.set(jid, phone);
+          saveCachedContact(jid, phone);
           logger.info(`✅ Resolved LID ${jid} to phone ${phone} from onWhatsApp query`);
           return phone;
         }
@@ -269,7 +269,7 @@ export const registerEvents = (sock) => {
     for (const contact of updates) {
       if (contact.id && contact.lid) {
         const phone = contact.id.split("@")[0] + "@c.us";
-        contactsCache.set(contact.lid, phone);
+        saveCachedContact(contact.lid, phone);
         logger.info(`Mapped LID ${contact.lid} -> ${phone}`);
       }
     }
@@ -279,7 +279,7 @@ export const registerEvents = (sock) => {
     for (const contact of contacts) {
       if (contact.id && contact.lid) {
         const phone = contact.id.split("@")[0] + "@c.us";
-        contactsCache.set(contact.lid, phone);
+        saveCachedContact(contact.lid, phone);
         logger.info(`Mapped LID ${contact.lid} -> ${phone} (upsert)`);
       }
     }
@@ -415,7 +415,7 @@ export const registerEvents = (sock) => {
               // Method 2: senderPn contains the real phone for LID
               else if (msg.key?.senderPn) {
                 participantPhone = msg.key.senderPn.split("@")[0] + "@c.us";
-                contactsCache.set(rawParticipant, participantPhone);
+                saveCachedContact(rawParticipant, participantPhone);
                 logger.info(`[GROUP] Resolved participant LID ${rawParticipant} to ${participantPhone} from senderPn`);
               }
               // Method 3: Use LID number as fallback (won't work for mentions but at least shows something)
@@ -471,6 +471,44 @@ export const registerEvents = (sock) => {
       } catch (error) {
         logger.error(`Failed to process message: ${error.message}`);
       }
+    }
+  });
+
+  // 💬 PRESENCE UPDATE: customer sedang mengetik / berhenti mengetik
+  sock.ev.on("presence.update", ({ id, presences }) => {
+    try {
+      for (const [jid, presence] of Object.entries(presences)) {
+        const lastPresence = presence.lastKnownPresence;
+        const isTyping = lastPresence === "composing";
+        const isPaused = lastPresence === "paused";
+
+        if (!isTyping && !isPaused) continue;
+
+        const isGroup = id.endsWith("@g.us");
+        logger.info(`[PRESENCE] ${jid} in ${id}: ${lastPresence}`);
+
+        // Resolve @lid to real phone if needed (WhatsApp Multi-Device)
+        // Normalize double @@lid -> @lid (Baileys quirk for presence.update id field)
+        let from = id.replace(/@@lid$/, "@lid");
+        if (from.endsWith("@lid")) {
+          if (contactsCache.has(from)) {
+            from = contactsCache.get(from);
+            logger.info(`[PRESENCE] Resolved LID ${id} -> ${from}`);
+          } else {
+            logger.warn(`[PRESENCE] Unresolved LID ${from}, skipping (send a message first to populate cache)`);
+            continue;
+          }
+        }
+
+        sendTypingToBackend({
+          from,
+          is_typing: isTyping,
+          is_group: isGroup,
+          participant: isGroup ? jid : undefined,  // Siapa yang typing di grup
+        }).catch((e) => logger.warn(`[PRESENCE] Failed to forward: ${e.message}`));
+      }
+    } catch (e) {
+      logger.warn(`[PRESENCE] Handler error: ${e.message}`);
     }
   });
 

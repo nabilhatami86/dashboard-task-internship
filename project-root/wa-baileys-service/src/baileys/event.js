@@ -216,6 +216,20 @@ const downloadMedia = async (msg) => {
 const extractText = (message) => {
   if (!message) return null;
 
+  // Unwrap iPhone/multi-device wrapper types
+  if (message.ephemeralMessage?.message) {
+    return extractText(message.ephemeralMessage.message);
+  }
+  if (message.viewOnceMessage?.message) {
+    return extractText(message.viewOnceMessage.message);
+  }
+  if (message.viewOnceMessageV2?.message?.viewOnceMessage?.message) {
+    return extractText(message.viewOnceMessageV2.message.viewOnceMessage.message);
+  }
+  if (message.deviceSentMessage?.message) {
+    return extractText(message.deviceSentMessage.message);
+  }
+
   // Regular text message
   if (message.conversation) {
     return message.conversation;
@@ -304,13 +318,7 @@ export const registerEvents = (sock) => {
           continue;
         }
 
-        // 🔄 LID RETRY WAIT: If LID format but no senderPn, skip and wait for retry
-        // Baileys will retry the message and the retried version will have senderPn
         const remoteJid = msg.key.remoteJid;
-        if (remoteJid?.endsWith("@lid") && !msg.key?.senderPn) {
-          logger.info(`[LID WAIT] Skipping LID message without senderPn, waiting for retry: ${messageId}`);
-          continue;
-        }
 
         // DEBUG: Log full message object untuk lihat struktur
         logger.info(
@@ -377,9 +385,19 @@ export const registerEvents = (sock) => {
         let mentionedJid = [];
 
         if (isGroup) {
-          const context = msg.message?.extendedTextMessage?.contextInfo;
-          mentionedJid = context?.mentionedJid || [];
+          // Unwrap iPhone wrappers (ephemeral, viewOnce, deviceSent) to find the real message
+          const innerMsg = msg.message?.ephemeralMessage?.message
+            ?? msg.message?.viewOnceMessage?.message
+            ?? msg.message?.deviceSentMessage?.message
+            ?? msg.message;
 
+          const context = innerMsg?.extendedTextMessage?.contextInfo
+            ?? innerMsg?.imageMessage?.contextInfo
+            ?? innerMsg?.videoMessage?.contextInfo
+            ?? innerMsg?.documentMessage?.contextInfo
+            ?? innerMsg?.audioMessage?.contextInfo;
+
+          mentionedJid = context?.mentionedJid || [];
           isMentioned = mentionedJid.length > 0;
 
           logger.info(`[GROUP CHECK] mentioned=${isMentioned} mentionedJid=${JSON.stringify(mentionedJid)}`);
